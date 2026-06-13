@@ -32,7 +32,13 @@ class KaraokeApp:
         tk.Label(
             header, text="🎤  Karaoke Generator",
             font=("Arial", 18, "bold"), bg="#16213e", fg="#e0d7ff",
-        ).pack(pady=12)
+        ).pack(side="left", padx=14, pady=12)
+
+        gpu_text, gpu_color = self._detect_gpu()
+        tk.Label(
+            header, text=gpu_text,
+            font=("Arial", 9), bg="#16213e", fg=gpu_color,
+        ).pack(side="right", padx=14)
 
         # Form
         form = tk.LabelFrame(self.root, text=" Impostazioni ", bg="#1a1a2e",
@@ -112,6 +118,20 @@ class KaraokeApp:
             insertbackground="white",
         )
         self.log_box.pack(fill="both", expand=True, padx=16, pady=(2, 12))
+
+    # ── Hardware detection ────────────────────────────────────────
+
+    @staticmethod
+    def _detect_gpu() -> tuple[str, str]:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                name = torch.cuda.get_device_name(0)
+                return f"⚡ GPU: {name}", "#4cff91"
+            else:
+                return "CPU (nessuna GPU CUDA)", "#aaaaaa"
+        except ImportError:
+            return "CPU (torch non installato)", "#ff9944"
 
     # ── File pickers ──────────────────────────────────────────────
 
