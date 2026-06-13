@@ -20,11 +20,11 @@ def _parse_mp3(path: str) -> dict:
     """
     basename = os.path.splitext(os.path.basename(path))[0]
     kind = "unknown"
-    for tag in ("_(Vocal)", "_(Instrumental)"):
-        if tag in basename:
-            kind = tag[2:-1].lower()   # 'vocal' or 'instrumental'
-            basename = basename.replace(tag, "").strip()
-            break
+    # Match tags like _(Vocal), _vocals, _vocal, _(Instrumental), _instrumental, etc.
+    m = re.search(r'[_(]+(vocals?|instrumental)[)]*$', basename, re.IGNORECASE)
+    if m:
+        kind = "vocal" if "vocal" in m.group(1).lower() else "instrumental"
+        basename = basename[:m.start()].strip()
     parts = basename.split(" - ", 1)
     return {
         "title":  parts[0].strip() if parts else "",
@@ -33,12 +33,23 @@ def _parse_mp3(path: str) -> dict:
     }
 
 
-def _sibling_path(vocal_path: str, tag_from: str, tag_to: str) -> str:
-    """Return the instrumental path derived from the vocal path."""
-    d   = os.path.dirname(vocal_path)
-    b   = os.path.basename(vocal_path)
-    new = b.replace(tag_from, tag_to)
-    return os.path.join(d, new)
+def _sibling_instrumental(vocal_path: str) -> str:
+    """Given a vocal path, try to find the matching instrumental in the same folder."""
+    d    = os.path.dirname(vocal_path)
+    base = os.path.splitext(os.path.basename(vocal_path))[0]
+    ext  = os.path.splitext(vocal_path)[1]
+    # Replace the vocal tag with the instrumental equivalent
+    new_base = re.sub(r'[_(]+(vocals?)[)]*$', '_(Instrumental)', base, flags=re.IGNORECASE)
+    candidate = os.path.join(d, new_base + ext)
+    if os.path.exists(candidate):
+        return candidate
+    # Fallback: scan folder for a file with "instrumental" in the name and same stem prefix
+    stem = re.sub(r'[_(]+(vocals?)[)]*$', '', base, flags=re.IGNORECASE).strip()
+    for f in os.listdir(d):
+        if re.search(r'instrumental', f, re.IGNORECASE) and f.lower().endswith(ext.lower()):
+            if stem.lower() in f.lower():
+                return os.path.join(d, f)
+    return ""
 
 
 def _output_path(title: str, artist: str) -> str:
@@ -211,14 +222,14 @@ class KaraokeApp:
             if info["artist"]:
                 self.artist_var.set(info["artist"])
             # Derive instrumental path
-            inst = _sibling_path(path, "_(Vocal)", "_(Instrumental)")
-            if os.path.exists(inst):
+            inst = _sibling_instrumental(path)
+            if inst:
                 self.instrumental_path.set(inst)
             # Set output path
             if info["title"] and info["artist"]:
                 self.output_path.set(_output_path(info["title"], info["artist"]))
             self._log(f"File vocale caricato: {os.path.basename(path)}")
-            if os.path.exists(inst):
+            if inst:
                 self._log(f"Strumentale rilevato: {os.path.basename(inst)}")
             else:
                 self._log("Strumentale non trovato automaticamente — selezionalo manualmente.")
