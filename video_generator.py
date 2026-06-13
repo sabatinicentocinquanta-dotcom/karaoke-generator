@@ -6,7 +6,7 @@ import numpy as np
 
 import renderer as R
 
-INSTRUMENTAL_THRESHOLD = 4.0   # seconds of silence → "Strumentale" screen
+INSTRUMENTAL_THRESHOLD = 15.0  # seconds of silence → "Strumentale" screen
 INTRO_DURATION         = 4.0   # title/artist intro screen duration
 ENDING_DURATION        = 3.5   # "Ending" screen
 BY_FRANK_DURATION      = 3.5   # "by Frank" screen
