@@ -63,6 +63,45 @@ def _merge_segments(a: dict, b: dict) -> dict:
     }
 
 
+def _split_segment(segment: dict, cursor_char: int) -> tuple[dict, dict]:
+    """Split a segment at the word boundary closest to cursor_char position.
+
+    Returns two new segment dicts (first_half, second_half).
+    """
+    text = segment["text"]
+    words = segment["words"]
+
+    # Find which word index corresponds to the cursor position
+    # Walk through words and accumulate character positions
+    pos = 0
+    split_word_idx = len(words) // 2  # fallback: split at midpoint
+    for i, w in enumerate(words):
+        word_end_pos = pos + len(w["word"])
+        if word_end_pos >= cursor_char:
+            # Split before this word if cursor is closer to its start, else after
+            split_word_idx = i if cursor_char <= pos + len(w["word"]) // 2 else i + 1
+            split_word_idx = max(1, min(split_word_idx, len(words) - 1))
+            break
+        pos = word_end_pos + 1  # +1 for space
+
+    words_a = words[:split_word_idx]
+    words_b = words[split_word_idx:]
+
+    seg_a = {
+        "text":  " ".join(w["word"] for w in words_a),
+        "start": words_a[0]["start"],
+        "end":   words_a[-1]["end"],
+        "words": words_a,
+    }
+    seg_b = {
+        "text":  " ".join(w["word"] for w in words_b),
+        "start": words_b[0]["start"],
+        "end":   words_b[-1]["end"],
+        "words": words_b,
+    }
+    return seg_a, seg_b
+
+
 # ── Segment Editor window ─────────────────────────────────────────────────────
 
 class SegmentEditor(tk.Toplevel):
@@ -93,8 +132,8 @@ class SegmentEditor(tk.Toplevel):
         self._source_segments = copy.deepcopy(segments)
         self._on_confirm = on_confirm
 
-        # Working list: [(segment_dict, tk.StringVar_for_text), ...]
-        self._rows: list[tuple[dict, tk.StringVar]] = []
+        # Working list: [(segment_dict, tk.StringVar, tk.Entry), ...]
+        self._rows: list[tuple[dict, tk.StringVar, tk.Entry]] = []
 
         self._build_ui()
         self._populate()
@@ -117,7 +156,8 @@ class SegmentEditor(tk.Toplevel):
         legend.pack(fill="x", padx=12, pady=4)
         for txt, fg in [
             ("  [×] elimina riga", self.DEL_FG),
-            ("  [↓] unisci con la successiva", self.TS_FG),
+            ("  [↓] unisci con successiva", self.TS_FG),
+            ("  [✂] dividi dove si trova il cursore", "#c8a0ff"),
             ("  Testo modificabile inline", self.FG),
         ]:
             tk.Label(legend, text=txt, bg=self.BG, fg=fg,
@@ -197,6 +237,14 @@ class SegmentEditor(tk.Toplevel):
                           bg=bg, fg="#606080", font=("Arial", 8))
         wc_lbl.pack(side="left", padx=2)
 
+        # Split button
+        split_btn = tk.Button(
+            frame, text="✂", width=2,
+            bg=self.BTN_BG, fg="#c8a0ff", relief="flat",
+            command=lambda i=idx, e=entry: self._split(i, e),
+        )
+        split_btn.pack(side="left", padx=1)
+
         # Merge-with-next button
         merge_btn = tk.Button(
             frame, text="↓", width=2,
@@ -213,7 +261,7 @@ class SegmentEditor(tk.Toplevel):
         )
         del_btn.pack(side="left", padx=(1, 4))
 
-        self._rows.append((seg, var))
+        self._rows.append((seg, var, entry))
 
     # ── Row actions ───────────────────────────────────────────────
 
@@ -223,6 +271,17 @@ class SegmentEditor(tk.Toplevel):
             return
         self._flush_edits()
         del self._source_segments[idx]
+        self._populate()
+
+    def _split(self, idx: int, entry: tk.Entry) -> None:
+        seg = self._source_segments[idx]
+        if len(seg["words"]) < 2:
+            messagebox.showinfo("Dividi", "La riga deve avere almeno 2 parole per essere divisa.")
+            return
+        self._flush_edits()
+        cursor_char = entry.index(tk.INSERT)
+        seg_a, seg_b = _split_segment(self._source_segments[idx], cursor_char)
+        self._source_segments[idx:idx + 1] = [seg_a, seg_b]
         self._populate()
 
     def _merge(self, idx: int) -> None:
@@ -242,7 +301,7 @@ class SegmentEditor(tk.Toplevel):
 
     def _flush_edits(self) -> None:
         """Apply current Entry values back to _source_segments before any structural change."""
-        for i, (seg, var) in enumerate(self._rows):
+        for i, (seg, var, _entry) in enumerate(self._rows):
             new_text = var.get().strip()
             if new_text != seg["text"]:
                 self._source_segments[i] = _remap_words(seg, new_text)
