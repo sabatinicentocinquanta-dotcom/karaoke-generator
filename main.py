@@ -6,12 +6,17 @@ import os
 # Ensure the package directory is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import tkinter as tk
 from gui import KaraokeApp
 
 
 def main() -> None:
-    root = tk.Tk()
+    try:
+        from tkinterdnd2 import TkinterDnD
+        root = TkinterDnD.Tk()
+    except ImportError:
+        import tkinter as tk
+        root = tk.Tk()
+
     root.title("Karaoke Generator — by Frank")
     root.geometry("760x600")
     root.minsize(640, 500)

@@ -6,6 +6,45 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 import threading
 import sys
 import os
+import re
+from datetime import datetime
+
+_PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+_OUTPUT_DIR  = os.path.join(_PROJECT_DIR, "output")
+os.makedirs(_OUTPUT_DIR, exist_ok=True)
+
+
+def _parse_mp3(path: str) -> dict:
+    """Parse 'Titolo - Artista_(Vocal).mp3' → {title, artist, kind}.
+    kind is 'vocal', 'instrumental', or 'unknown'.
+    """
+    basename = os.path.splitext(os.path.basename(path))[0]
+    kind = "unknown"
+    for tag in ("_(Vocal)", "_(Instrumental)"):
+        if tag in basename:
+            kind = tag[2:-1].lower()   # 'vocal' or 'instrumental'
+            basename = basename.replace(tag, "").strip()
+            break
+    parts = basename.split(" - ", 1)
+    return {
+        "title":  parts[0].strip() if parts else "",
+        "artist": parts[1].strip() if len(parts) > 1 else "",
+        "kind":   kind,
+    }
+
+
+def _sibling_path(vocal_path: str, tag_from: str, tag_to: str) -> str:
+    """Return the instrumental path derived from the vocal path."""
+    d   = os.path.dirname(vocal_path)
+    b   = os.path.basename(vocal_path)
+    new = b.replace(tag_from, tag_to)
+    return os.path.join(d, new)
+
+
+def _output_path(title: str, artist: str) -> str:
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name = re.sub(r'[\\/*?:"<>|]', "_", f"{title} - {artist}_{ts}.mp4")
+    return os.path.join(_OUTPUT_DIR, name)
 
 
 class KaraokeApp:
@@ -45,31 +84,37 @@ class KaraokeApp:
                              fg="#8ab4f8", font=("Arial", 10))
         form.pack(fill="x", padx=16, pady=8)
 
-        def row(label, var, r, pick_fn=None, choices=None):
+        def row(label, var, r, pick_fn=None, choices=None) -> tk.Entry | None:
             tk.Label(form, text=label, bg="#1a1a2e", fg="white",
                      width=18, anchor="w").grid(row=r, column=0, **pad)
+            widget = None
             if choices:
                 om = ttk.Combobox(form, textvariable=var, values=choices, width=10, state="readonly")
                 om.grid(row=r, column=1, sticky="w", **pad)
             else:
-                tk.Entry(form, textvariable=var, width=42,
-                         bg="#0f3460", fg="white", insertbackground="white").grid(
-                    row=r, column=1, sticky="ew", **pad)
+                widget = tk.Entry(form, textvariable=var, width=42,
+                                  bg="#0f3460", fg="white", insertbackground="white")
+                widget.grid(row=r, column=1, sticky="ew", **pad)
             if pick_fn:
                 tk.Button(form, text="…", command=pick_fn, width=3,
                           bg="#533483", fg="white").grid(row=r, column=2, **pad)
+            return widget
 
         row("Titolo brano:",   self.title_var,  0)
         row("Artista:",        self.artist_var, 1)
-        row("MP3 Vocale:",     self.vocal_path, 2,
-            pick_fn=lambda: self._pick_mp3(self.vocal_path))
-        row("MP3 Strumentale:", self.instrumental_path, 3,
-            pick_fn=lambda: self._pick_mp3(self.instrumental_path))
+        entry_vocal = row("MP3 Vocale:",     self.vocal_path, 2,
+                          pick_fn=lambda: self._pick_mp3(self.vocal_path))
+        entry_inst  = row("MP3 Strumentale:", self.instrumental_path, 3,
+                          pick_fn=lambda: self._pick_mp3(self.instrumental_path))
         row("Output MP4:",     self.output_path, 4, pick_fn=self._pick_output)
         row("Lingua (Whisper):", self.language_var, 5,
             choices=["auto", "it", "en", "es", "fr", "de", "pt"])
 
         form.columnconfigure(1, weight=1)
+
+        # Drag & drop
+        self._register_dnd(entry_vocal, kind_hint="vocal")
+        self._register_dnd(entry_inst,  kind_hint="instrumental")
 
         # Buttons
         btn_frame = tk.Frame(self.root, bg="#1a1a2e")
@@ -132,6 +177,54 @@ class KaraokeApp:
                 return "CPU (nessuna GPU CUDA)", "#aaaaaa"
         except ImportError:
             return "CPU (torch non installato)", "#ff9944"
+
+    # ── Drag & drop ───────────────────────────────────────────────
+
+    def _register_dnd(self, entry: tk.Entry | None, kind_hint: str) -> None:
+        if entry is None:
+            return
+        try:
+            from tkinterdnd2 import DND_FILES
+            entry.drop_target_register(DND_FILES)
+            entry.dnd_bind("<<Drop>>", lambda e, k=kind_hint: self._on_drop(e, k))
+        except Exception:
+            pass  # tkinterdnd2 not available — drag & drop silently disabled
+
+    def _on_drop(self, event, kind_hint: str) -> None:
+        # tkinterdnd2 may wrap paths with spaces in curly braces
+        raw = event.data.strip()
+        paths = self.root.tk.splitlist(raw)
+        if not paths:
+            return
+        path = paths[0].strip()
+
+        if not path.lower().endswith((".mp3", ".wav", ".m4a", ".flac")):
+            return
+
+        info = _parse_mp3(path)
+        kind = info["kind"] if info["kind"] != "unknown" else kind_hint
+
+        if kind == "vocal":
+            self.vocal_path.set(path)
+            if info["title"]:
+                self.title_var.set(info["title"])
+            if info["artist"]:
+                self.artist_var.set(info["artist"])
+            # Derive instrumental path
+            inst = _sibling_path(path, "_(Vocal)", "_(Instrumental)")
+            if os.path.exists(inst):
+                self.instrumental_path.set(inst)
+            # Set output path
+            if info["title"] and info["artist"]:
+                self.output_path.set(_output_path(info["title"], info["artist"]))
+            self._log(f"File vocale caricato: {os.path.basename(path)}")
+            if os.path.exists(inst):
+                self._log(f"Strumentale rilevato: {os.path.basename(inst)}")
+            else:
+                self._log("Strumentale non trovato automaticamente — selezionalo manualmente.")
+        else:
+            self.instrumental_path.set(path)
+            self._log(f"File strumentale caricato: {os.path.basename(path)}")
 
     # ── File pickers ──────────────────────────────────────────────
 

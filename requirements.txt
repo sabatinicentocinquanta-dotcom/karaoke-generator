@@ -2,3 +2,4 @@ stable-ts>=2.0
 moviepy==1.0.3
 Pillow>=10.0
 numpy
+tkinterdnd2
