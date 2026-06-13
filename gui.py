@@ -14,23 +14,32 @@ _OUTPUT_DIR  = os.path.join(_PROJECT_DIR, "output")
 os.makedirs(_OUTPUT_DIR, exist_ok=True)
 
 
+_TAG_RE = re.compile(r'\s*[\s_(]*(vocals?|instrumental)\s*[)]*\s*$', re.IGNORECASE)
+
+
+def _strip_tag(s: str) -> tuple[str, str]:
+    """Remove vocal/instrumental tag from string. Returns (cleaned, kind)."""
+    m = _TAG_RE.search(s)
+    if m:
+        kind = "vocal" if "vocal" in m.group(1).lower() else "instrumental"
+        return s[:m.start()].strip(), kind
+    return s.strip(), "unknown"
+
+
 def _parse_mp3(path: str) -> dict:
     """Parse 'Titolo - Artista_(Vocal).mp3' → {title, artist, kind}.
     kind is 'vocal', 'instrumental', or 'unknown'.
     """
     basename = os.path.splitext(os.path.basename(path))[0]
-    kind = "unknown"
-    # Match tags like _(Vocal), _vocals, _vocal, _(Instrumental), _instrumental, etc.
-    m = re.search(r'[_(]+(vocals?|instrumental)[)]*$', basename, re.IGNORECASE)
-    if m:
-        kind = "vocal" if "vocal" in m.group(1).lower() else "instrumental"
-        basename = basename[:m.start()].strip()
-    parts = basename.split(" - ", 1)
-    return {
-        "title":  parts[0].strip() if parts else "",
-        "artist": parts[1].strip() if len(parts) > 1 else "",
-        "kind":   kind,
-    }
+    basename, kind = _strip_tag(basename)
+    parts  = basename.split(" - ", 1)
+    title  = parts[0].strip()
+    artist = parts[1].strip() if len(parts) > 1 else ""
+    # Safety: strip tag from artist too in case it survived the split
+    artist, kind2 = _strip_tag(artist)
+    if kind == "unknown":
+        kind = kind2
+    return {"title": title, "artist": artist, "kind": kind}
 
 
 def _sibling_instrumental(vocal_path: str) -> str:
