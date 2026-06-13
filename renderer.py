@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import os
 
-W, H = 1920, 1080
+W, H = 1280, 720
 BG_COLOR   = (10, 10, 30)
 WHITE      = (255, 255, 255)
 HIGHLIGHT  = (255, 215, 0)    # current word — gold
@@ -65,10 +65,10 @@ def _to_array(img: Image.Image) -> np.ndarray:
 
 # ── Public render functions ───────────────────────────────────────────────────
 
-BAR_W      = 900   # progress bar total width
-BAR_H      = 18    # progress bar height
-BAR_RADIUS = 9     # rounded corners
-BAR_Y      = 680   # vertical centre of bar
+BAR_W      = 640   # progress bar total width
+BAR_H      = 14    # progress bar height
+BAR_RADIUS = 7     # rounded corners
+BAR_Y      = 460   # vertical centre of bar
 BAR_BG     = (35, 35, 60)
 BAR_FILL_L = (60, 100, 220)   # bar fill — left colour
 BAR_FILL_R = (180, 80, 220)   # bar fill — right colour (purple)

@@ -138,6 +138,7 @@ def generate_video(
         remove_temp=True,
         verbose=False,
         logger=None,
-        preset="medium",
+        preset="slow",
+        ffmpeg_params=["-crf", "28", "-b:a", "128k"],
     )
     log("Video completato!")
