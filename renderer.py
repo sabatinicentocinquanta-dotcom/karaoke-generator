@@ -65,6 +65,61 @@ def _to_array(img: Image.Image) -> np.ndarray:
 
 # ── Public render functions ───────────────────────────────────────────────────
 
+BAR_W      = 900   # progress bar total width
+BAR_H      = 18    # progress bar height
+BAR_RADIUS = 9     # rounded corners
+BAR_Y      = 680   # vertical centre of bar
+BAR_BG     = (35, 35, 60)
+BAR_FILL_L = (60, 100, 220)   # bar fill — left colour
+BAR_FILL_R = (180, 80, 220)   # bar fill — right colour (purple)
+NOTE_COLOR = (180, 180, 220)
+
+
+def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
+    return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+def render_intro_countdown(title: str, artist: str, progress: float) -> np.ndarray:
+    """progress: 0.0 (start of intro) → 1.0 (singing is about to begin)."""
+    img = _blank()
+    d   = ImageDraw.Draw(img)
+
+    # Title + artist centred, shifted up to leave room for the bar
+    ft = _font(100)
+    fa = _font(66)
+    th_t = _th(d, title, ft)
+    th_a = _th(d, artist, fa)
+    gap  = 28
+    total_h = th_t + gap + th_a
+    y = (BAR_Y - 60 - total_h) // 2 + 40   # vertically centred above bar
+    d.text((_cx(d, title, ft), y),            title,  font=ft, fill=WHITE)
+    d.text((_cx(d, artist, fa), y + th_t + gap), artist, font=fa, fill=NEXT_COLOR)
+
+    # Progress bar background
+    bx = (W - BAR_W) // 2
+    d.rounded_rectangle(
+        [bx, BAR_Y, bx + BAR_W, BAR_Y + BAR_H],
+        radius=BAR_RADIUS, fill=BAR_BG,
+    )
+
+    # Progress bar fill (coloured, animated width)
+    fill_w = max(BAR_RADIUS * 2, int(BAR_W * progress))
+    fill_color = _lerp_color(BAR_FILL_L, BAR_FILL_R, progress)
+    d.rounded_rectangle(
+        [bx, BAR_Y, bx + fill_w, BAR_Y + BAR_H],
+        radius=BAR_RADIUS, fill=fill_color,
+    )
+
+    # Musical note at the right end of the bar
+    fn = _font(36)
+    note = "♪"
+    nx = bx + BAR_W + 18
+    ny = BAR_Y + BAR_H // 2 - _th(d, note, fn) // 2
+    d.text((nx, ny), note, font=fn, fill=NOTE_COLOR)
+
+    return _to_array(img)
+
+
 def render_intro(title: str, artist: str) -> np.ndarray:
     img = _blank()
     d = ImageDraw.Draw(img)

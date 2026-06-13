@@ -17,6 +17,15 @@ def _clip(arr: np.ndarray, duration: float):
     return ImageClip(arr).set_duration(max(duration, 0.05))
 
 
+def _intro_countdown_clip(title: str, artist: str, duration: float):
+    """Animated progress-bar intro clip rendered frame by frame."""
+    from moviepy.editor import VideoClip
+    def make_frame(t: float) -> np.ndarray:
+        progress = t / duration if duration > 0 else 1.0
+        return R.render_intro_countdown(title, artist, progress)
+    return VideoClip(make_frame, duration=duration).set_fps(24)
+
+
 def _flatten_words(segments: list[dict]) -> list[dict]:
     flat = []
     for si, seg in enumerate(segments):
@@ -61,16 +70,10 @@ def generate_video(
     first_start = all_words[0]["start"]
     last_end    = all_words[-1]["end"]
 
-    # ── Intro screen ─────────────────────────────────────────────
-    intro_screen_dur = min(first_start, INTRO_DURATION)
-    if intro_screen_dur > 0:
-        clips.append(_clip(R.render_intro(title, artist), intro_screen_dur))
-        log(f"Intro: {intro_screen_dur:.1f}s")
-
-    if first_start > intro_screen_dur + 0.1:
-        pre_inst_dur = first_start - intro_screen_dur
-        clips.append(_clip(R.render_instrumental(title, artist), pre_inst_dur))
-        log(f"Strumentale iniziale: {pre_inst_dur:.1f}s")
+    # ── Intro countdown (covers entire pre-vocal section) ────────
+    if first_start > 0:
+        log(f"Intro countdown animato: {first_start:.1f}s")
+        clips.append(_intro_countdown_clip(title, artist, first_start))
 
     # ── Word-by-word karaoke ──────────────────────────────────────
     for i, wi in enumerate(all_words):
